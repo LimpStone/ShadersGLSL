@@ -1,4 +1,5 @@
-//Made by Josue Galvan Ramos in collaboration with Mike Tovar, Andres, Carlos 
+//Made by Josue Galvan Ramos 
+//reference https://www.shadertoy.com/view/lslXRS , https://www.shadertoy.com/view/ssBGRR
 
 //PBR Shading Sampling
 
@@ -21,7 +22,7 @@ vec4 scene(vec3 position) {
 }
 
 vec3 normal(vec3 ray_hit_position, float smoothness) {	
-    // based on https://www.shadertoy.com/view/MdSGDW
+// based on https://www.shadertoy.com/view/MdSGDW
     vec3 n;
     vec2 dn = vec2(smoothness, 0.0);
     n.x = scene(ray_hit_position + dn.xyy).x - scene(ray_hit_position - dn.xyy).x;
@@ -60,7 +61,24 @@ vec3 Specular_F_Roughness(vec3 specularColor, float a, vec3 h, vec3 v) {
     vec3 c = vec3(1.0f - a, 1.0f - a, 1.0f - a);
     return specularColor + (max(c, specularColor) - specularColor) * pow((1.0f - clamp(dot(v, h), 0.0f, 1.0f)), 5.0f);
 }
+float hash21(vec2 p,vec2 seed){  return fract(sin(dot(p,seed ))*43758.5453);}
 
+float BrickGridMod(vec2 uv, out vec2 id,float lengt)
+{
+    vec2 pos = uv * vec2(1.0,lengt);
+    pos.x += floor(uv.y*lengt)/lengt;
+    id = floor(pos);
+    id.y /= lengt;
+    pos = fract(pos);
+    vec2 uv2 = fract (pos)-0.5;
+    uv2.y /= lengt;
+    pos=abs(fract (pos + 0.5) - 0.5);
+    float d = min(pos.x,pos.y/lengt);
+
+    float y = length(uv2);
+
+   return abs(d);
+}
 float DTermGGX(float a, float NdH) {
     //Isotropic ggx
     float a2 = a * a;
@@ -90,6 +108,10 @@ vec3 CookTorrance(vec3 h, vec3 v, vec3 specularColor, float a, float NdL, float 
     return (D * G * F) / (4.0 * NdL * NdV + EPSILON);
 }
 
+vec3 CookTorrance(vec3 h, vec3 v, vec3 specularColor, float a, float NdL, float NdV, float NdH, vec3 F,float D) {
+    float G = GTermSmith(a, NdV, NdL);
+    return (D * G * F) / (4.0 * NdL * NdV + EPSILON);
+}
 vec3 Lambert(vec3 albedo) {
     return albedo / PI;
 }
@@ -104,6 +126,16 @@ vec3 SpecularLoveUWU(vec3 h, vec3 F, vec3 specularColor, vec3 normal, float roug
     float LdV = clamp(dot(lightDir, viewDir), 0.0f, 1.0f);
     float a = max(0.001f, roughness * roughness);
     return CookTorrance(h, viewDir, specularColor, a, NdL, NdV, NdH, F);
+}
+vec3 SpecularLoveUWU(vec3 h, vec3 F, vec3 specularColor, vec3 normal, float roughness, vec3 lightPosition, vec3 lightDir, vec3 viewDir,float D) {
+
+    ///Calculate everything.
+    float NdL = clamp(dot(normal, lightDir), 0.0f, 1.0f);
+    float NdV = clamp(dot(normal, viewDir), 0.0f, 1.0f);
+
+    float NdH = clamp(dot(normal, h), 0.0f, 1.0f);
+    float a = max(0.001f, roughness * roughness);
+    return CookTorrance(h, viewDir, specularColor, a, NdL, NdV, D, F);
 }
 float SheinLove(vec3 normal, vec3 viewDir, float sheenFactor, float sheenBias, float mask) {
     float NdV = clamp(dot(normal, viewDir), 0.0f, 1.0f);
@@ -134,7 +166,53 @@ vec3 hash(vec2 p, vec2 color) {
     vec3 q = vec3(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)), dot(p, color));
     return fract(sin(q) * 43758.5453);
 }
+mat2 makem2(in float theta){float c = cos(theta);float s = sin(theta);return mat2(c,-s,s,c);}
+float noise( in vec2 x ){return texture(iChannel0, x*.01).x;}
+vec2 gradn(vec2 p)
+{
+	float ep = .01;
+	float gradx = noise(vec2(p.x+ep,p.y))-noise(vec2(p.x-ep,p.y));
+	float grady = noise(vec2(p.x,p.y+ep))-noise(vec2(p.x,p.y-ep));
+	return vec2(gradx,grady);
+}
 
+float flow(in vec2 p)
+{
+	float z=2.;
+	float rz = 0.;
+	vec2 bp = p;
+	for (float i= 1.;i < 7.;i++ )
+	{
+		//primary flow speed
+		p += iTime*0.01;
+		
+		//secondary flow speed (speed of the perceived flow)
+		bp += iTime*0.01;
+		
+		//displacement field (try changing time multiplier)
+		vec2 gr = gradn(i*p*.34+iTime*0.2);
+		
+		//rotation of the displacement field
+		gr*=makem2(iTime*6.-(0.05*p.x+0.03*p.y)*0.1);
+		
+		//displace the system
+		p += gr*.25;
+		
+		//add noise octave
+		rz+= (sin(noise(p)*7.)*0.5+0.5)/z;
+		
+		//blend factor (blending displaced system with base system)
+		//you could call this advection factor (.5 being low, .95 being high)
+		p = mix(bp,p,.6);
+		
+		//intensity scaling
+		z *= 1.2;
+		//octave scaling
+		p *= 1.5;
+		bp *= 1.9;
+	}
+	return rz;	
+}
 vec3 iqnoise(in vec2 x) {
     vec2 p = floor(x);
     vec2 f = fract(x);
@@ -184,12 +262,12 @@ vec3 proceduralGlintNormal(vec2 uv, float scale) {
 }
 ///NORMAL
 vec3 ComputeLight(vec3 albedoColor, vec3 specularColor, vec3 normal, float roughness, vec3 lightPosition, vec3 lightColor,
- vec3 lightDir, vec3 viewDir, float met,bool thin) {
+ vec3 lightDir, vec3 viewDir, float met,bool thin,vec3 h) {
 
     vec3 tangent = vec3(normal.y,-normal.x,0);
     vec3 bitangent = cross(normal,tangent);
 
-    vec3 h = normalize(lightDir + viewDir);
+    h *= normalize(lightDir + viewDir);
     float NdV = clamp(dot(normal, viewDir), 0.0f, 1.0f);
 
     vec3 F = FTermSchlick(specularColor, h, viewDir);
@@ -198,16 +276,16 @@ vec3 ComputeLight(vec3 albedoColor, vec3 specularColor, vec3 normal, float rough
     if(thin)F *= Thin;
     ///Get the diffuse result and the specular result.
     vec3 ColorDiffuse = Lambert(albedoColor);
-    vec3 ColorSpecular = SpecularLoveUWU(h, F, specularColor, normal, roughness, lightPosition, lightDir, viewDir); 
+    vec3 ColorSpecular = SpecularLoveUWU(h, F, specularColor, normal, roughness, lightPosition, 
+    lightDir, viewDir); 
 
     ///Diffuse and Specular are mutually exclusive, if light goes into diffuse it is because it was not reflected 
     vec3 diffuseContribution = vec3(1.0f, 1.0f, 1.0f) - F; ///To get our diffuse contribution we substract the specular contribution from a white color.
 
     vec3 SpecDif = vec3(1.0) - FTermSchlick(vec3(0.4), h, viewDir);
+    
     ColorDiffuse *= diffuseContribution;
     ColorDiffuse *= 1.0f - met;
-
-    float Dis = Danisotropic(tangent,bitangent,roughness,h,normal); //disotropic calculus 
 
     return lightColor * (ColorDiffuse + ColorSpecular) * SpecDif ;
 }
@@ -239,17 +317,25 @@ vec3 lightDir, vec3 viewDir, float met, float sheen, float sheenBias, float mask
 //COAT OVERRIDE
 vec3 ComputeLight(vec3 albedoColor, vec3 specularColor, vec3 normal, float roughness, vec3 lightPosition, vec3 lightColor,
 vec3 lightDir, vec3 viewDir, float met, vec3 coatNormal, float coatRoughness, vec3 h) {
-    h = normalize(lightDir + viewDir);
+    h *= normalize(lightDir + viewDir);
+
     float NdV = clamp(dot(normal, viewDir), 0.0f, 1.0f);
+    float NdVCoat = clamp(dot(coatNormal, viewDir), 0.0f, 1.0f);
+
+    vec3 coatColor = vec3(0.4);
 
     vec3 F = FTermSchlick(specularColor, h, viewDir);
-    vec3 coatF = FTermSchlick(vec3(0.4), h, viewDir);
+    vec3 coatF = FTermSchlick(coatColor, h, viewDir);
     vec3 Thin = thinFilm(NdV);
+    vec3 ThinCoat = thinFilm(NdVCoat);
+
     F *= Thin;
+    coatF *= ThinCoat;
+
     ///Get the diffuse result and the specular result.
     vec3 ColorDiffuse = Lambert(albedoColor);
     vec3 ColorSpecular = SpecularLoveUWU(h, F, specularColor, normal, roughness, lightPosition, lightDir, viewDir);
-    vec3 ClearCoat = SpecularLoveUWU(h, coatF, vec3(0.4), coatNormal, coatRoughness, lightPosition, lightColor, lightDir);
+    vec3 ClearCoat = SpecularLoveUWU(h, coatF, coatColor, coatNormal, coatRoughness, lightPosition, lightColor, lightDir);
 
     ///Diffuse and Specular are mutually exclusive, if light goes into diffuse it is because it was not reflected 
     vec3 diffuseContribution = vec3(1.0f, 1.0f, 1.0f) - F; ///To get our diffuse contribution we substract the specular contribution from a white color.
@@ -274,7 +360,10 @@ vec3 ComputeLight(vec3 albedoColor, vec3 specularColor, vec3 normal, float rough
     if(thin)F *= Thin;
     ///Get the diffuse result and the specular result.
     vec3 ColorDiffuse = Lambert(albedoColor);
-    vec3 ColorSpecular = SpecularLoveUWU(h, F, specularColor, normal, roughness, lightPosition, lightDir, viewDir); 
+
+    float D = Danisotropic(tangent,bitangent,roughness,h,normal);
+    vec3 ColorSpecular = SpecularLoveUWU(h, F, specularColor, normal, roughness, lightPosition, 
+    lightDir, viewDir,D); 
 
     ///Diffuse and Specular are mutually exclusive, if light goes into diffuse it is because it was not reflected 
     vec3 diffuseContribution = vec3(1.0f, 1.0f, 1.0f) - F; ///To get our diffuse contribution we substract the specular contribution from a white color.
@@ -385,8 +474,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 ///If something is 100% metallic, then its specular color will be the full albedo. 
 ///If it is 0% metallic, there will barely be any specular color.
     vec3 specColor = mix(vec3(0.06f, 0.06f, 0.06f), col, met);
-    
-    vec3 pbr = ComputeLight(col, specColor, n, roughness, -lightDir * 1000.0f, lightColor, -lightDir, -viewDir, met,false);
+    vec3 h;
+    vec3 pbr = ComputeLight(col, specColor, n, roughness, -lightDir * 1000.0f, lightColor, -lightDir, -viewDir, met,false,h);
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////Example1
 /*
     vec3 alb = texture(iChannel5,vec2(u,v)).xyz;
@@ -455,14 +544,14 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
  1000.0f, lightColor, -lightDir, -viewDir, met,2.0,0.5,txt); 
 */
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////Example 3
- /**
+ /*
     vec3 coatN = n;
 
     vec3 alb = texture(iChannel5,vec2(u,v)).xyz;
     vec3 hei = texture(iChannel5,vec2(u,v)).xyz; 
     vec3 norm = texture(iChannel8,vec2(u,v)).xyz;
-    met =  texture(iChannel7,vec2(u,v)).x;
-    roughness = texture(iChannel9,vec2(u,v)).x;
+    met *=  texture(iChannel7,vec2(u,v)).x;
+    roughness *= texture(iChannel9,vec2(u,v)).x;
 
     // calculation of the normal 
     vec3 tangent = vec3(n.y,-n.x,0);
@@ -470,7 +559,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     norm = normalize(norm*2.0-1.0);
     mat3 matrix  = mat3(tangent,bitangent,norm);
     n*= normalize(matrix*norm);
-    
+
     //adding the albedo to the color
     col*=alb;
 
@@ -484,11 +573,12 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     #iChannel10 "file://woodparquet_84-1K/woodparquet_84_ambientocclusion-1K.png"
 
     specColor = mix(vec3(0.06f, 0.06f, 0.06f), col, met);    
-    pbr = ComputeLight(col, specColor, n, roughness, -lightDir * 1000.0f, lightColor, -lightDir, -viewDir, met,coatN,1.0,hei); 
+    pbr = ComputeLight(col, specColor, n, roughness, -lightDir * 1000.0f, 
+    lightColor, -lightDir, -viewDir, met,coatN,1.0,hei); 
 */
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////Example 4
-
-    roughness = 0.4;
+/*
+   // roughness = 0.4;
     vec3 norm = proceduralGlintNormal(vec2(u,v),10.0);
 
     // calculation of the normal 
@@ -499,12 +589,101 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     n*= normalize(matrix*norm);
 
     specColor = mix(vec3(0.06f, 0.06f, 0.06f), col, met); 
-    pbr = ComputeLight(col, specColor, n, roughness, -lightDir * 1000.0f, lightColor, -lightDir, -viewDir, met,false);
-
+    pbr = ComputeLight(col, specColor, n, roughness,
+    -lightDir * 1000.0f, lightColor, -lightDir, -viewDir,
+     met,true,tangent,bitangent);
+*/
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////Example 5
+/*
+    vec3 norm = vec3(0,0,0);
+    // calculation of the normal 
+    vec3 tangent = vec3(n.y,-n.x,0);
+    vec3 bitangent = cross(n,tangent);
+    norm = normalize(norm*2.0-1.0);
+    mat3 matrix  = mat3(tangent,bitangent,norm);
+    n*= normalize(matrix*norm);
+
+    specColor = mix(vec3(0.06f, 0.06f, 0.06f), col, met); 
+    pbr = ComputeLight(col, specColor, n, roughness, -lightDir * 1000.0f, lightColor, -lightDir, -viewDir, met,false,tangent,bitangent);
+*/
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////// FINAL
+
+    vec2 uvs = vec2(u,v);
+    uvs.x *= iResolution.x/iResolution.y;
+    float scale = 2.0;
+    uvs*=scale;
+    
+    #iChannel0 "file://Suede/Suede_normals.jpg"
+    #iChannel6 "file://Suede/Suede_Diffuse.jpg"
+    #iChannel7 "file://Suede/Suede_normals.jpg"
+    //Used to save vec out of function
+    vec2 id;
+
+    //ALBEDO COLORS
+    vec3 shapecolor1  = vec3(0.18, 0.04, 0.04);
+	vec3 shapecolor2  = vec3(0.41, 0.14, 0.06);
+
+    // LINE SIZE
+    float LineSize = 0.065;
+    float LineSize2 = 0.01; //IF LINESIZE2 > LINESIZE IS GOING TO IVERT COLORS
+
+
+    //2nd COLOR VARIATION
+    float speed=0.4;
+    float AreaIntensity = 5.0;
+
+
+    //BRICKSHAPES
+    float absD = BrickGridMod(uvs,id,2.0);
+    float rz = flow(vec2(id));
+
+    //LINES COLOR
+    vec3 colorLine = vec3(0.25, 0.06, 0.03);
+    vec3 Lcol =colorLine/rz;
+    Lcol=pow(Lcol,vec3(1.5));
+    //HEIGH MAP
+    vec3 hCol = vec3(0.0);
+    vec3 hCol2 = vec3(1.0);
+
+    //BLEND FOR HASH AND ANIMATION COLOR
+    float blend = pow(abs(sin(hash21(id,vec2(419.2,371.9))*4.35 + iTime*speed)),AreaIntensity);	
+    //USED FOR INVERTED HASH TO CREATE NORMALMAP, NO ANIMATED MAPS
+    float nblend = pow(abs(sin(hash21(id,vec2(371.9,419.2))*4.35)), AreaIntensity);	
+    float nblend2 = pow(abs(sin(hash21(id,vec2(419.2,371.9))*4.35)),AreaIntensity);
+    //NORMAL MAP
+    vec3 normalMap = vec3(nblend,nblend2,1);
+    //ALBEDO COLOR
+    shapecolor1 = mix(shapecolor1,shapecolor2,blend); 
+    //HEIGH MAP
+    vec3 hcolor = mix(hCol,hCol2,nblend);
+
+    
+    //FINAL COLORS
+    col *= mix(Lcol,shapecolor1,smoothstep(LineSize2, LineSize, absD)); 
+    vec3 norm = mix(vec3(absD),normalMap,smoothstep(LineSize2, LineSize,absD));
+    h *= mix(vec3(absD),hcolor,smoothstep(LineSize2, LineSize, absD)); 
+
+    //Using textures
+    col*=texture(iChannel6,vec2(u,v)).xyz;
+    roughness = texture(iChannel7,vec2(u,v)).x+0.1;
+    met = 0.1;
+   
+    // calculation of the normal norm 
+    vec3 tangent = vec3(n.y,-n.x,0);
+    vec3 bitangent = cross(n,tangent);
+    norm = normalize(norm*2.0-1.0);
+    mat3 matrix  = mat3(tangent,bitangent,norm);
+    n*= normalize(matrix*norm);
+
+    
+    fragColor = vec4(col,1.0);
+
+    specColor = mix(vec3(absD), col, met); 
+
+    pbr = ComputeLight(col, specColor, n, roughness, -lightDir * 1000.0f,
+    lightColor, -lightDir, -viewDir, met,false,h);
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-   
 
     ///Compute the actual DIRECT light contribution.
     ///Direct lighting is the contribution of real lights directly hitting a surface. 
