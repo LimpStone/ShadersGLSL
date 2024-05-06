@@ -2,6 +2,9 @@
 # Class project
 This project has 4 shaders in total.
 
+## Personal project
+![Code_aBM7hqd8R0](https://github.com/LimpStone/ShadersGLSL/assets/69880372/75938b00-218c-45c5-9ce1-996c0ad1533d)
+
 ## Cristal
 ![Code_ORQU0SIZsU](https://github.com/LimpStone/ShadersGLSL/assets/69880372/e75336bf-f468-4794-a72d-f2b91d609499)
 ## Wood
@@ -10,3 +13,4 @@ This project has 4 shaders in total.
 ![Code_q3lUEzoht2](https://github.com/LimpStone/ShadersGLSL/assets/69880372/8a2b2a8f-30bb-4d61-89c0-2dca99103935)
 ## Texture
 ![2w3T0EpPJO](https://github.com/LimpStone/ShadersGLSL/assets/69880372/13656ae0-e8e1-4832-b30e-40c5f71933e3)
+ 
